@@ -1,0 +1,64 @@
+15:01:27.287952+0800	backboardd	MultitouchHID	1201: 0x7734		DHML:  P1 Hover (stage MakeTouch     -- ignoring motion)
+15:01:27.288376+0800	backboardd	MultitouchHID	1201: 0x7734	[HID] [MT] dispatchEvent Dispatching event with 1 children, _eventMask=0x863 _childEventMask=0x843 Cancel=0 Touching=1 inRange=1
+15:01:27.288608+0800	backboardd	MultitouchHID	1201: 0x5d9c	F2 [4426.931000] : Touching (deviceID 0x200000000000068)
+15:01:27.288777+0800	backboardd	backboardd	1201: 0x7734	Touch moved from this region: {{0, 0}, {0, 0}} to this region: {{0, 0}, {375, 667}}
+15:01:27.288894+0800	backboardd	backboardd	1201: 0x7734	Touch entered exclusive touch region of this touch region: {{0, 0}, {375, 667}} exclusiveHitTestRegion: {{0, 0}, {375, 667}}, so no longer a candidate for hit testing
+15:01:27.290056+0800	backboardd	backboardd	1201: 0x7734	policies: combination: []
+15:01:27.290252+0800	backboardd	backboardd	1201: 0x7734	examining 4b45d078 policy response 1
+15:01:27.290786+0800	backboardd	backboardd	1201: 0x7734	examining d71750ff policy response 0
+15:01:27.290925+0800	backboardd	backboardd	1201: 0x7734	examining bbab7e4a policy response 0
+15:01:27.291019+0800	backboardd	backboardd	1201: 0x7734	examining 9cefc8fb policy response 0
+15:01:27.291125+0800	backboardd	backboardd	1201: 0x7734	touchstreams: start sending isFirstDown:true lifted:false
+15:01:27.291282+0800	backboardd	backboardd	1201: 0x7734	send Digitizer token: 0x758001FF; gen: 6428; subevents: [path: 1; {114, 76}; down; edge; touchID: 0x48; {114, 76}]
+15:01:27.291723+0800	backboardd	BackBoardHIDEventFoundation	1201: 0x7734	#BKSendHIDEvent: Sending event to client connection: IOHIDEventSystemConnection uuid:7B24A509-4230-4DD6-A8F2-FB669266099B pid:1200 process:SpringBoard type:Passive entitlements:0x18 caller:BackBoardServices: <redacted> + 288 attributes:{
+    HighFrequency = 0;
+    bundleID = "com.apple.springboard";
+    pid = 1200;
+} state:0x0 events:978 mask:0x120004808
+15:01:27.292366+0800	backboardd	backboardd	1201: 0x7734	Assuming system gestures are possible ((null))
+15:01:27.292695+0800	backboardd	backboardd	1201: 0x7734	Began touching context: 4B45D078
+15:01:27.292841+0800	backboardd	backboardd	1201: 0x7734	send Digitizer token: 0x4B45D078; sgp; gen: 6428; subevents: [path: 1; {57, 38}; down; edge; touchID: 0x48; {57, 38}]
+15:01:27.293051+0800	backboardd	BackBoardHIDEventFoundation	1201: 0x7734	#BKSendHIDEvent: Sending event to client connection: IOHIDEventSystemConnection uuid:7DA6D39D-7543-421A-82DB-FCFDD1E3E4E4 pid:1266 process:Preferences type:Passive entitlements:0x6 caller:BackBoardServices: <redacted> + 288 attributes:{
+    HighFrequency = 0;
+    bundleID = "com.apple.Preferences";
+    pid = 1266;
+} state:0x0 events:52 mask:0x800
+15:01:27.293224+0800	backboardd	backboardd	1201: 0x7734	[0] digitizer:0x106099200 contextID:4b45d078 clientPort:48ca3 touches:{1} - (null)
+15:01:27.304306+0800	backboardd	MultitouchHID	1201: 0x6de6		DHML:  P1 Wating for slide, ZInstability=1.000000, TimeInstability=0.645833 (from dtstart=0.017000s)
+15:01:27.320838+0800	backboardd	MultitouchHID	1201: 0x6de6		DHML:  P1 Wating for slide, ZInstability=0.000000, TimeInstability=0.291667 (from dtstart=0.034000s)
+15:01:27.337686+0800	backboardd	MultitouchHID	1201: 0x6de6		DHML:  P1 Wating for slide, ZInstability=1.000000, TimeInstability=0.167949 (from dtstart=0.050000s)
+15:01:27.354172+0800	backboardd	MultitouchHID	1201: 0x6de6		DHML:  P1 Wating for slide, ZInstability=4.454919, TimeInstability=0.157051 (from dtstart=0.067000s)
+15:01:27.354429+0800	backboardd	MultitouchHID	1201: 0x6de6		DHML:  MTHandMotion::resetHandMotion(0)
+15:01:27.354649+0800	backboardd	MultitouchHID	1201: 0x6de6	[HID] [MT] dispatchEvent Dispatching event with 1 children, _eventMask=0x23 _childEventMask=0x803 Cancel=0 Touching=0 inRange=0
+15:01:27.354796+0800	backboardd	MultitouchHID	1201: 0x7734	F2 [4426.981000] : Not touching (deviceID 0x200000000000068)
+15:01:27.354897+0800	backboardd	backboardd	1201: 0x6de6	policies: combination: []
+15:01:27.355009+0800	backboardd	backboardd	1201: 0x6de6	examining 4b45d078 policy response 1
+15:01:27.355278+0800	backboardd	backboardd	1201: 0x6de6	examining d71750ff policy response 0
+15:01:27.355375+0800	backboardd	backboardd	1201: 0x6de6	examining bbab7e4a policy response 0
+15:01:27.355477+0800	backboardd	backboardd	1201: 0x6de6	examining 9cefc8fb policy response 0
+15:01:27.355571+0800	backboardd	backboardd	1201: 0x6de6	touchstreams: start sending isFirstDown:false lifted:true
+15:01:27.355798+0800	backboardd	backboardd	1201: 0x6de6	send Digitizer token: 0x758001FF; gen: 6432; subevents: [path: 1; {114, 76}; up; edge; touchID: 0x48; {114, 76}]
+15:01:27.357211+0800	backboardd	BackBoardHIDEventFoundation	1201: 0x6de6	#BKSendHIDEvent: Sending event to client connection: IOHIDEventSystemConnection uuid:7B24A509-4230-4DD6-A8F2-FB669266099B pid:1200 process:SpringBoard type:Passive entitlements:0x18 caller:BackBoardServices: <redacted> + 288 attributes:{
+    HighFrequency = 0;
+    bundleID = "com.apple.springboard";
+    pid = 1200;
+} state:0x0 events:979 mask:0x120004808
+15:01:27.357619+0800	backboardd	backboardd	1201: 0x6de6	remove ctx:4B45D078
+15:01:27.358467+0800	backboardd	backboardd	1201: 0x5d9c	touch 48 sent to destination pid:1266
+15:01:27.359294+0800	backboardd	backboardd	1201: 0x5d9c	post update for touch:48 to pid:1200
+15:01:27.360059+0800	backboardd	backboardd	1201: 0x6de6	send Digitizer token: 0x4B45D078; sgp; gen: 6432; subevents: [path: 1; {57, 38}; up; edge; touchID: 0x48; {57, 38}]
+15:01:27.364922+0800	backboardd	BackBoardHIDEventFoundation	1201: 0x6de6	#BKSendHIDEvent: Sending event to client connection: IOHIDEventSystemConnection uuid:7DA6D39D-7543-421A-82DB-FCFDD1E3E4E4 pid:1266 process:Preferences type:Passive entitlements:0x6 caller:BackBoardServices: <redacted> + 288 attributes:{
+    HighFrequency = 0;
+    bundleID = "com.apple.Preferences";
+    pid = 1266;
+} state:0x0 events:53 mask:0x800
+15:01:27.365113+0800	backboardd	backboardd	1201: 0x6de6	stop tracking:1
+15:01:27.365245+0800	backboardd	backboardd	1201: 0x6de6	reset:1
+15:01:27.365381+0800	backboardd	backboardd	1201: 0x66ce	System gestures no longer possible (<0x106099200> - (null)) causedByTouchStream: <BKDigitizerTouchStreamClient: 0x10cb81c00; identifier: system-gestures; contextID: 758001FF; clientPort: 50603; isValid: YES; dispatchMode: ignoring; ambiguityRecommendation: process>
+15:01:27.365663+0800	backboardd	backboardd	1201: 0x66ce	send Digitizer token: 0x4B45D078; strm: system-gestures; systemGestureStateChange; subevents: []
+15:01:27.365823+0800	backboardd	BackBoardHIDEventFoundation	1201: 0x66ce	#BKSendHIDEvent: Sending event to client connection: IOHIDEventSystemConnection uuid:7DA6D39D-7543-421A-82DB-FCFDD1E3E4E4 pid:1266 process:Preferences type:Passive entitlements:0x6 caller:BackBoardServices: <redacted> + 288 attributes:{
+    HighFrequency = 0;
+    bundleID = "com.apple.Preferences";
+    pid = 1266;
+} state:0x0 events:54 mask:0x800
+15:01:27.366552+0800	backboardd	backboardd	1201: 0x66ce	sg transition (sending, defer) -> (ignoring, process) somethingDidChange:YES didNotify:YES

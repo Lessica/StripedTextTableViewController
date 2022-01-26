@@ -13,8 +13,13 @@
 @property (nonatomic, strong) NSArray <NSString *> *filteredTextRows;
 @property (nonatomic, strong) NSArray <NSString *> *textRows;
 
+@property (nonatomic, strong) NSNumberFormatter *decimalNumberFormatter;
+@property (nonatomic, assign) NSUInteger numberOfTextRowsNotLoaded;
+
 @property (nonatomic, strong) UIBarButtonItem *trashItem;
 @property (nonatomic, strong) UISearchController *searchController;
+
+@property (nonatomic, assign) dispatch_source_t autoReloadSource;
 
 @end
 
@@ -22,12 +27,17 @@
 @synthesize entryPath = _entryPath;
 
 + (NSString *)viewerName {
-    return @"Log Viewer";
+    return NSLocalizedString(@"Log Viewer", @"StripedTextTableViewController");
 }
 
 - (instancetype)initWithPath:(NSString *)path {
     if (self = [super init]) {
         _entryPath = path;
+        _rowHeight = UITableViewAutomaticDimension;
+        _lineBreakMode = NSLineBreakByWordWrapping;
+        
+        _decimalNumberFormatter = [[NSNumberFormatter alloc] init];
+        _decimalNumberFormatter.numberStyle = NSNumberFormatterDecimalStyle;
     }
     return self;
 }
@@ -54,11 +64,13 @@
         searchController;
     });
 
-    self.refreshControl = ({
-        UIRefreshControl *refreshControl = [[UIRefreshControl alloc] init];
-        [refreshControl addTarget:self action:@selector(reloadTextDataFromEntry:) forControlEvents:UIControlEventValueChanged];
-        refreshControl;
-    });
+    if (self.pullToReload) {
+        self.refreshControl = ({
+            UIRefreshControl *refreshControl = [[UIRefreshControl alloc] init];
+            [refreshControl addTarget:self action:@selector(reloadTextDataFromEntry:) forControlEvents:UIControlEventValueChanged];
+            refreshControl;
+        });
+    }
 
     if (self.allowTrash) {
         self.navigationItem.rightBarButtonItem = self.trashItem;
@@ -72,6 +84,8 @@
     [self.tableView setSeparatorInset:UIEdgeInsetsZero];
 
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"StripedTextCell"];
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"CenteredTextCell"];
+    
     [self loadTextDataFromEntry];
 }
 
@@ -90,9 +104,6 @@
     if (!entryPath) {
         return;
     }
-    if (0 != access(entryPath.fileSystemRepresentation, W_OK)) {
-        [[NSData data] writeToFile:entryPath atomically:YES];
-    }
     NSURL *fileURL = [NSURL fileURLWithPath:entryPath];
     NSError *readError = nil;
     NSFileHandle *textHandler = [NSFileHandle fileHandleForReadingFromURL:fileURL error:&readError];
@@ -104,7 +115,16 @@
     if (!textHandler) {
         return;
     }
-    NSData *dataPart = [textHandler readDataOfLength:1024 * 1024];
+    if (self.reversed) {
+        unsigned long long seekOffset = 0;
+        [textHandler seekToEndReturningOffset:&seekOffset error:nil];
+        if (seekOffset > 1024 * 1024) {
+            [textHandler seekToOffset:seekOffset - 1024 * 1024 error:nil];
+        } else {
+            [textHandler seekToOffset:0 error:nil];
+        }
+    }
+    NSData *dataPart = [textHandler readDataUpToLength:1024 * 1024 error:nil];
     [textHandler closeFile];
     if (!dataPart) {
         return;
@@ -119,26 +139,118 @@
         self.textRows = [NSArray arrayWithObjects:[NSString stringWithFormat:NSLocalizedString(@"The content of text file \"%@\" is empty.", nil), [entryPath lastPathComponent]], nil];
         [self.tableView reloadData];
     } else {
-        NSMutableArray <NSString *> *rowTexts = [[stringPart componentsSeparatedByString:self.rowSeparator ?: @"\n["] mutableCopy];
+        NSMutableArray <NSString *> *rowTexts = nil;
+
+        if (self.rowSeparator) {
+            rowTexts = [[stringPart componentsSeparatedByString:self.rowSeparator] mutableCopy];
+        } else {
+            rowTexts = [[stringPart componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] mutableCopy];
+        }
+
+        if (self.rowPrefixRegularExpression) {
+            NSMutableArray <NSString *> *mRowTexts = [NSMutableArray arrayWithCapacity:rowTexts.count];
+            NSMutableString *mRow = nil;
+            for (NSString *row in rowTexts) {
+                if (![self.rowPrefixRegularExpression firstMatchInString:row
+                      options:NSMatchingAnchored
+                      range:NSMakeRange(0, [row length])]
+                    ) {
+                    [mRow appendString:self.rowSeparator ?: @"\n"];
+                    [mRow appendString:row];
+                } else {
+                    if (mRow)
+                        [mRowTexts addObject:[mRow stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]];
+                    mRow = [row mutableCopy];
+                }
+            }
+            if (mRow)
+                [mRowTexts addObject:[mRow stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]];
+            rowTexts = mRowTexts;
+        }
+
         if (!self.preserveEmptyLines) {
             [rowTexts removeObject:@""];
         }
+
+        if (self.removeDuplicates) {
+            NSMutableArray <NSString *> *mRowTexts = [NSMutableArray arrayWithCapacity:rowTexts.count];
+            for (NSString *rowText in rowTexts) {
+                if (![mRowTexts containsObject:rowText]) {
+                    [mRowTexts addObject:rowText];
+                }
+            }
+            rowTexts = mRowTexts;
+        }
+
         if (self.reversed) {
             rowTexts = [[[rowTexts reverseObjectEnumerator] allObjects] mutableCopy];
         }
-        self.textRows = rowTexts;
+
+        if (self.maximumNumberOfRows > 0 && self.maximumNumberOfRows < rowTexts.count) {
+            self.textRows = [rowTexts subarrayWithRange:NSMakeRange(0, self.maximumNumberOfRows)];
+            self.numberOfTextRowsNotLoaded = rowTexts.count - self.maximumNumberOfRows;
+        } else {
+            self.textRows = rowTexts;
+            self.numberOfTextRowsNotLoaded = 0;
+        }
+
         [self.tableView reloadData];
+    }
+    if (self.autoReload) {
+        [self resetAutoReload];
     }
 }
 
+- (void)resetAutoReload {
+    int entryfd = open([self.entryPath fileSystemRepresentation], O_EVTONLY);
+    if (entryfd < 0) {
+        return;
+    }
+    
+    if (self.autoReloadSource) {
+        dispatch_source_cancel(self.autoReloadSource);
+        self.autoReloadSource = nil;
+    }
+    
+    dispatch_queue_t eventQueue = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+
+    uintptr_t eventMask = DISPATCH_VNODE_DELETE | DISPATCH_VNODE_WRITE | DISPATCH_VNODE_EXTEND | DISPATCH_VNODE_ATTRIB | DISPATCH_VNODE_LINK | DISPATCH_VNODE_RENAME | DISPATCH_VNODE_REVOKE;
+
+    dispatch_source_t eventSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, entryfd, eventMask, eventQueue);
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_block_t eventHandler = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        uintptr_t pendingData = dispatch_source_get_data(eventSource);
+        if ((pendingData & DISPATCH_VNODE_DELETE) || (pendingData & DISPATCH_VNODE_RENAME)) {
+            dispatch_source_cancel(eventSource);
+            strongSelf.autoReloadSource = nil;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [strongSelf loadTextDataFromEntry];
+        });
+    };
+    dispatch_block_t cancelHandler = ^{
+        int closefd = (int)dispatch_source_get_handle(eventSource);
+        close(closefd);
+    };
+
+    dispatch_source_set_event_handler(eventSource, eventHandler);
+    dispatch_source_set_cancel_handler(eventSource, cancelHandler);
+    
+    self.autoReloadSource = eventSource;
+    dispatch_resume(eventSource);
+}
+
 - (void)trashItemTapped:(UIBarButtonItem *)sender {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Confirm" message:[NSString stringWithFormat:@"Do you want to clear this log file \"%@\"?", [self.entryPath lastPathComponent]] preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction *_Nonnull action) {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Confirm", @"StripedTextTableViewController") message:[NSString stringWithFormat:NSLocalizedString(@"Do you want to clear this log file \"%@\"?", @"StripedTextTableViewController"), [self.entryPath lastPathComponent]] preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", @"StripedTextTableViewController") style:UIAlertActionStyleCancel handler:^(UIAlertAction *_Nonnull action) {
 
                       }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Confirm" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_Nonnull action) {
-                          [[NSData data] writeToFile:self.entryPath atomically:YES];
-                          [self loadTextDataFromEntry];
+    __weak typeof(self) weakSelf = self;
+    [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Confirm", @"StripedTextTableViewController") style:UIAlertActionStyleDefault handler:^(UIAlertAction *_Nonnull action) {
+                          [[NSData data] writeToFile:[weakSelf entryPath] atomically:YES];
+                          [weakSelf loadTextDataFromEntry];
                       }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
@@ -146,37 +258,89 @@
 #pragma mark - Table view data source
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 1;
+    return self.searchController.isActive || self.numberOfTextRowsNotLoaded == 0 ? 1 : 2;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.searchController.isActive ? self.filteredTextRows.count : self.textRows.count;
+    if (section == 0) {
+        return self.searchController.isActive ? self.filteredTextRows.count : self.textRows.count;
+    } else {
+        return self.numberOfTextRowsNotLoaded == 0 ? 0 : 1;
+    }
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return 0;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
+    return 0;
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section {
     return [UIView new];
 }
 
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"StripedTextCell" forIndexPath:indexPath];
-
-    NSString *rowText = self.searchController.isActive ? self.filteredTextRows[indexPath.row] : self.textRows[indexPath.row];
-
-    NSString *searchContent = self.searchController.isActive ? self.searchController.searchBar.text : nil;
-
-    NSDictionary *rowAttrs = @{ NSFontAttributeName: [UIFont fontWithName:@"Courier" size:14.0], NSForegroundColorAttributeName: [UIColor labelColor] };
-
-    NSMutableAttributedString *mRowText = [[NSMutableAttributedString alloc] initWithString:rowText attributes:rowAttrs];
-    if (searchContent) {
-        NSRange searchRange = [rowText rangeOfString:searchContent options:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch range:NSMakeRange(0, rowText.length)];
-        if (searchRange.location != NSNotFound) {
-            [mRowText addAttributes:@{ NSBackgroundColorAttributeName: [UIColor colorWithRed:253.0/255.0 green:247.0/255.0 blue:148.0/255.0 alpha:1.0] } range:searchRange];
-        }
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == 0) {
+        return self.allowMultiline ? UITableViewAutomaticDimension : self.rowHeight;
+    } else {
+        return UITableViewAutomaticDimension;
     }
+}
 
-    [cell.textLabel setAttributedText:mRowText];
-    [cell.textLabel setNumberOfLines:0];
-    [cell.textLabel setLineBreakMode:NSLineBreakByCharWrapping];
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *cellName = indexPath.section == 0 ? @"StripedTextCell" : @"CenteredTextCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellName forIndexPath:indexPath];
+
+    if (indexPath.section == 0) {
+        NSString *rowText = self.searchController.isActive ? self.filteredTextRows[indexPath.row] : self.textRows[indexPath.row];
+        NSString *searchContent = self.searchController.isActive ? self.searchController.searchBar.text : nil;
+
+        NSMutableParagraphStyle *paraStyle = [[NSMutableParagraphStyle alloc] init];
+        [paraStyle setLineBreakMode:self.lineBreakMode];
+
+        NSDictionary *rowAttrs = @{
+            NSFontAttributeName: [UIFont monospacedSystemFontOfSize:14.0 weight:UIFontWeightRegular],
+            NSForegroundColorAttributeName: [UIColor labelColor],
+            NSParagraphStyleAttributeName: paraStyle,
+        };
+
+        NSMutableAttributedString *mRowText = [[NSMutableAttributedString alloc] initWithString:rowText attributes:rowAttrs];
+        if (searchContent) {
+            NSRange searchRange = [rowText rangeOfString:searchContent options:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch range:NSMakeRange(0, rowText.length)];
+            if (searchRange.location != NSNotFound) {
+                [mRowText addAttributes:@{
+                     NSForegroundColorAttributeName: [UIColor colorWithDynamicProvider:^UIColor *_Nonnull (UITraitCollection *_Nonnull traitCollection) {
+                                                          if (traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+                                                              return [UIColor systemBackgroundColor];
+                                                          } else {
+                                                              return [UIColor labelColor];
+                                                          }
+                                                      }],
+                     NSBackgroundColorAttributeName: [UIColor colorWithRed:253.0/255.0 green:247.0/255.0 blue:148.0/255.0 alpha:1.0],
+                 } range:searchRange];
+            }
+        }
+
+        [cell.textLabel setAttributedText:mRowText];
+        [cell.textLabel setTextAlignment:NSTextAlignmentNatural];
+        [cell.textLabel setLineBreakMode:self.lineBreakMode];
+        [cell.textLabel setNumberOfLines:self.allowMultiline ? (NSInteger)self.maximumNumberOfLines : 1];
+        [cell setSelectionStyle:UITableViewCellSelectionStyleDefault];
+    } else {
+        NSDictionary *rowAttrs = @{
+            NSFontAttributeName: [UIFont systemFontOfSize:14.0],
+            NSForegroundColorAttributeName: [UIColor secondaryLabelColor],
+        };
+        NSAttributedString *rowText = [[NSAttributedString alloc] initWithString:[NSString stringWithFormat:NSLocalizedString(@"%@ rows not loaded", @"StripedTextTableViewController"), [self.decimalNumberFormatter stringFromNumber:@(self.numberOfTextRowsNotLoaded)]] attributes:rowAttrs];
+        
+        [cell.textLabel setAttributedText:rowText];
+        [cell.textLabel setTextAlignment:NSTextAlignmentCenter];
+        [cell.textLabel setLineBreakMode:NSLineBreakByTruncatingTail];
+        [cell.textLabel setNumberOfLines:0];
+        [cell setSelectionStyle:UITableViewCellSelectionStyleNone];
+    }
 
     if (indexPath.row % 2 == 0) {
         [cell setBackgroundColor:[UIColor systemBackgroundColor]];
@@ -189,24 +353,34 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (self.tapToCopy) {
-        NSString *content = (self.searchController.isActive ? self.filteredTextRows[indexPath.row] : self.textRows[indexPath.row]);
-        [[UIPasteboard generalPasteboard] setString:content];
+    if (indexPath.section == 0) {
+        if (self.tapToCopy) {
+            NSString *content = (self.searchController.isActive ? self.filteredTextRows[indexPath.row] : self.textRows[indexPath.row]);
+            [[UIPasteboard generalPasteboard] setString:content];
+            if ([self.delegate respondsToSelector:@selector(stripedTextTableViewRowDidCopy:withText:)]) {
+                [self.delegate stripedTextTableViewRowDidCopy:self withText:content];
+            }
+        }
     }
 }
 
 - (UIContextMenuConfiguration *)tableView:(UITableView *)tableView contextMenuConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath point:(CGPoint)point {
-    if (self.pressToCopy) {
-        NSString *content = (self.searchController.isActive ? self.filteredTextRows[indexPath.row] : self.textRows[indexPath.row]);
-        NSArray <UIAction *> *cellActions = @[
-            [UIAction actionWithTitle:@"Copy" image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
-                 [[UIPasteboard generalPasteboard] setString:content];
-             }],
-        ];
-        return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu *_Nullable (NSArray<UIMenuElement *> *_Nonnull suggestedActions) {
-                    UIMenu *menu = [UIMenu menuWithTitle:@"" children:cellActions];
-                    return menu;
-                }];
+    if (indexPath.section == 0) {
+        if (self.pressToCopy) {
+            NSString *content = (self.searchController.isActive ? self.filteredTextRows[indexPath.row] : self.textRows[indexPath.row]);
+            NSArray <UIAction *> *cellActions = @[
+                [UIAction actionWithTitle:NSLocalizedString(@"Copy", @"StripedTextTableViewController") image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
+                     [[UIPasteboard generalPasteboard] setString:content];
+                     if ([self.delegate respondsToSelector:@selector(stripedTextTableViewRowDidCopy:withText:)]) {
+                         [self.delegate stripedTextTableViewRowDidCopy:self withText:content];
+                     }
+                 }],
+            ];
+            return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu *_Nullable (NSArray<UIMenuElement *> *_Nonnull suggestedActions) {
+                        UIMenu *menu = [UIMenu menuWithTitle:@"" children:cellActions];
+                        return menu;
+                    }];
+        }
     }
     return nil;
 }
